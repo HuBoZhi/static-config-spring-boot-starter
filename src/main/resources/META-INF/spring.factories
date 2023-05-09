@@ -1,0 +1,6 @@
+org.springframework.context.ApplicationListener=\
+  org.hubz.common.event.InitSpringContextUtilEventListener,\
+  org.hubz.common.event.CustomizeApplicationEnvironmentPreparedEventListener
+
+org.springframework.boot.diagnostics.FailureAnalyzer=\
+  org.hubz.common.exceptions.PropertyNotFoundAnalyzer

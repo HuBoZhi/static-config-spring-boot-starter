@@ -1,0 +1,24 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.github.HuBoZhi</groupId>
+  <artifactId>static-config-spring-boot-starter</artifactId>
+  <version>1.0.0</version>
+  <name>static-config-spring-boot-starter Maven Webapp</name>
+  <description>将配置文件中的配置加载到静态属性中去，这个静态属性需要在统一的类中，可以有多个类</description>
+  <url>http://maven.apache.org</url>
+  <properties>
+    <java.version>1.8</java.version>
+    <spring-boot.version>2.7.8</spring-boot.version>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+      <version>${spring-boot.version}</version>
+    </dependency>
+  </dependencies>
+  <build>
+    <finalName>static-config-spring-boot-starter</finalName>
+  </build>
+</project>
