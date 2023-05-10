@@ -46,6 +46,8 @@ public class CustomizeApplicationEnvironmentPreparedEventListener implements App
                 for (Field field : fields) {
                     // 获取每个属性的StaticConfigValue注解的值
                     StaticPropertyName annotation = field.getAnnotation(StaticPropertyName.class);
+                    // todo 判断字段是否为静态字段，如果不是则报错注解加载的字段为非静态字段
+
                     // 不为空说明有这个注解，这个属性是需要注入配置项的
                     if (Objects.nonNull(annotation)) {
                         String propertyName = annotation.value();
@@ -68,6 +70,10 @@ public class CustomizeApplicationEnvironmentPreparedEventListener implements App
                 }
             }
         }
+        // todo 新增静态配置检查是否开启，静态配置检查类，包含哪些字段，排除哪些字段
+        // todo 默认检查【静态配置检查类】中的所有静态字段
+        // todo 包含哪些字段配置项不为空时则只检查这些字段
+        // todo 排除哪些字段不为空时则在检查时排除掉这些字段
     }
 
 
