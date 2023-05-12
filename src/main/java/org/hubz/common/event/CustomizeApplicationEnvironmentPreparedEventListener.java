@@ -5,6 +5,7 @@ import org.hubz.common.annocations.StaticPropertyName;
 import org.hubz.common.exceptions.LoadExtraPropertyFileException;
 import org.hubz.common.exceptions.PropertyNotFoundException;
 import org.hubz.common.utils.CastUtils;
+import org.hubz.common.utils.EnvironmentUtils;
 import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -12,9 +13,11 @@ import org.springframework.core.env.PropertiesPropertySource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PropertiesLoaderUtils;
+import org.springframework.util.CollectionUtils;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -24,20 +27,26 @@ import java.util.Properties;
  **/
 public class CustomizeApplicationEnvironmentPreparedEventListener implements ApplicationListener<ApplicationEnvironmentPreparedEvent> {
 
-    private static final String staticConfigClass = "static.config.class";
+    private static final String STATIC_CONFIG_CLASS = "static.config.class";
     private static final String STATIC_CONFIG_FIELD_CHECK_ENABLE = "static.config.field.check.enable";
 
 
     @Override
     public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
         ConfigurableEnvironment environment = event.getEnvironment();
-        // 将配置文件中的配置注入到静态变量中
-        configSetToStaticField(environment);
-        // todo 新增静态配置检查是否开启，静态配置检查类，包含哪些字段，排除哪些字段
-        checkStaticField(environment);
-        // todo 默认检查【静态配置检查类】中的所有静态字段
-        // todo 包含哪些字段配置项不为空时则只检查这些字段
-        // todo 排除哪些字段不为空时则在检查时排除掉这些字段
+        // 获取静态配置类数组
+        List<String> staticConfigClassNameList = EnvironmentUtils.castSamePrefixPropertyToClazz(environment, STATIC_CONFIG_CLASS, String.class);
+        // 校验不为空,不为空这个功能才启用
+        if (!CollectionUtils.isEmpty(staticConfigClassNameList)) {
+            // 将配置文件中的配置注入到静态变量中
+            configSetToStaticField(environment, staticConfigClassNameList);
+            // todo 新增静态配置检查是否开启，静态配置检查类，包含哪些字段，排除哪些字段
+            checkStaticField(environment);
+            // todo 默认检查【静态配置检查类】中的所有静态字段
+            // todo 包含哪些字段配置项不为空时则只检查这些字段
+            // todo 排除哪些字段不为空时则在检查时排除掉这些字段
+        }
+
     }
 
     /**
@@ -58,52 +67,43 @@ public class CustomizeApplicationEnvironmentPreparedEventListener implements App
      *
      * @param environment 上下文环境变量
      **/
-    private void configSetToStaticField(ConfigurableEnvironment environment) {
-        // todo 获取静态配置类数组
-
-        // todo 将静态配置类数组转换成对象列表
-
-        String staticConfigClassNameString = environment.getProperty(staticConfigClass);
-        // 校验不为空
-        if (Objects.nonNull(staticConfigClassNameString) && !"".equals(staticConfigClassNameString)) {
-            String[] staticConfigClassNameArray = staticConfigClassNameString.split(",");
-            for (String staticConfigClassName : staticConfigClassNameArray) {
-                // 加载类
-                Class<?> staticConfigClass;
-                try {
-                    staticConfigClass = Class.forName(staticConfigClassName);
-                } catch (ClassNotFoundException e) {
-                    throw new RuntimeException(e);
+    private void configSetToStaticField(ConfigurableEnvironment environment, List<String> staticConfigClassNameList) {
+        for (String staticConfigClassName : staticConfigClassNameList) {
+            // 加载类
+            Class<?> staticConfigClass;
+            try {
+                staticConfigClass = Class.forName(staticConfigClassName);
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+            }
+            // 判断是否存在需要额外加载的配置文件(额外配置文件必须在需要加载的静态类上)
+            loadExtraPropertiesFile(environment, staticConfigClass);
+            // 获取类中属性列表
+            Field[] fields = staticConfigClass.getDeclaredFields();
+            for (Field field : fields) {
+                // 获取每个属性的StaticConfigValue注解的值
+                StaticPropertyName annotation = field.getAnnotation(StaticPropertyName.class);
+                // 判断字段是否为静态字段，如果不是则报错注解加载的字段为非静态字段
+                if (!(Modifier.isFinal(field.getModifiers()) && Modifier.isStatic(field.getModifiers()))) {
+                    throw new RuntimeException("the StaticPropertyName is not expected to modify a non-static field or a non-final field");
                 }
-                // 判断是否存在需要额外加载的配置文件(额外配置文件必须在需要加载的静态类上)
-                loadExtraPropertiesFile(environment, staticConfigClass);
-                // 获取类中属性列表
-                Field[] fields = staticConfigClass.getDeclaredFields();
-                for (Field field : fields) {
-                    // 获取每个属性的StaticConfigValue注解的值
-                    StaticPropertyName annotation = field.getAnnotation(StaticPropertyName.class);
-                    // 判断字段是否为静态字段，如果不是则报错注解加载的字段为非静态字段
-                    if (!(Modifier.isFinal(field.getModifiers()) && Modifier.isStatic(field.getModifiers()))) {
-                        throw new RuntimeException("the StaticPropertyName is not expected to modify a non-static field or a non-final field");
+                // 不为空说明有这个注解，这个属性是需要注入配置项的
+                if (Objects.nonNull(annotation)) {
+                    String propertyName = annotation.value();
+                    String propertyValue = environment.getProperty(propertyName);
+                    if (Objects.isNull(propertyValue) || "".equals(propertyValue)) {
+                        // 判断在environment中是否有对应的配置项，没有则报错，终止程序
+                        throw new PropertyNotFoundException(String.format("配置项【%s】职位空,请检查配置文件", propertyName));
                     }
-                    // 不为空说明有这个注解，这个属性是需要注入配置项的
-                    if (Objects.nonNull(annotation)) {
-                        String propertyName = annotation.value();
-                        String propertyValue = environment.getProperty(propertyName);
-                        if (Objects.isNull(propertyValue) || "".equals(propertyValue)) {
-                            // 判断在environment中是否有对应的配置项，没有则报错，终止程序
-                            throw new PropertyNotFoundException(String.format("配置项【%s】职位空,请检查配置文件", propertyName));
-                        }
-                        // 获取属性的类型
-                        Class<?> fieldType = field.getType();
-                        // 配置项值转换
-                        field.setAccessible(true);
-                        try {
-                            // 给静态属性赋值
-                            field.set(null, CastUtils.cast(fieldType, propertyValue));
-                        } catch (IllegalAccessException e) {
-                            throw new RuntimeException(e);
-                        }
+                    // 获取属性的类型
+                    Class<?> fieldType = field.getType();
+                    // 配置项值转换
+                    field.setAccessible(true);
+                    try {
+                        // 给静态属性赋值
+                        field.set(null, CastUtils.cast(fieldType, propertyValue));
+                    } catch (IllegalAccessException e) {
+                        throw new RuntimeException(e);
                     }
                 }
             }

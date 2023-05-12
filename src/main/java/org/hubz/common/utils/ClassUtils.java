@@ -22,4 +22,9 @@ public class ClassUtils {
         }
         return fieldNameList;
     }
+
+    public static <T> Boolean checkBaseObject(Class<T> clazz) {
+        String className = clazz.getName();
+       return StaticConfigCommonConstant.BASE_DATA_OBJECT_LIST.contains(className);
+    }
 }
