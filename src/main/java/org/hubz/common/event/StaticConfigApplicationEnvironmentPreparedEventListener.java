@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
  * @author hubz
  * @date 2023/5/9 22:01
  **/
-public class CustomizeApplicationEnvironmentPreparedEventListener implements ApplicationListener<ApplicationEnvironmentPreparedEvent> {
+public class StaticConfigApplicationEnvironmentPreparedEventListener implements ApplicationListener<ApplicationEnvironmentPreparedEvent> {
 
     private static final String STATIC_CONFIG_CLASS = "static.config.class";
 
