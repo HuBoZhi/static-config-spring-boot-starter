@@ -22,10 +22,12 @@ public class CastUtils {
             return null;
         }
         String fileTypeName = targetType.getName();
-        if (StaticConfigCommonConstant.Integer_BASE_OBJECT_NAME.equals(fileTypeName)) {
+        if (StaticConfigCommonConstant.INTEGER_BASE_OBJECT_NAME.equals(fileTypeName)) {
             return Integer.parseInt(String.valueOf(value));
         } else if (StaticConfigCommonConstant.STRING_BASE_OBJECT_NAME.equals(fileTypeName)) {
             return value;
+        } else if (StaticConfigCommonConstant.LONG_BASE_OBJECT_NAME.equals(fileTypeName)) {
+            return Long.parseLong(String.valueOf(value));
         }
         return null;
     }

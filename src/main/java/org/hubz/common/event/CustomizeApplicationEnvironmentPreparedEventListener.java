@@ -5,6 +5,7 @@ import org.hubz.common.annocations.StaticPropertyName;
 import org.hubz.common.exceptions.LoadExtraPropertyFileException;
 import org.hubz.common.exceptions.PropertyNotFoundException;
 import org.hubz.common.utils.CastUtils;
+import org.hubz.common.utils.ClassUtils;
 import org.hubz.common.utils.EnvironmentUtils;
 import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
 import org.springframework.context.ApplicationListener;
@@ -16,10 +17,13 @@ import org.springframework.core.io.support.PropertiesLoaderUtils;
 import org.springframework.util.CollectionUtils;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.stream.Collectors;
 
 /**
  * @author hubz
@@ -28,46 +32,44 @@ import java.util.Properties;
 public class CustomizeApplicationEnvironmentPreparedEventListener implements ApplicationListener<ApplicationEnvironmentPreparedEvent> {
 
     private static final String STATIC_CONFIG_CLASS = "static.config.class";
-    private static final String STATIC_CONFIG_FIELD_CHECK_ENABLE = "static.config.field.check.enable";
 
 
     @Override
     public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
         ConfigurableEnvironment environment = event.getEnvironment();
         // 获取静态配置类数组
-        List<String> staticConfigClassNameList = EnvironmentUtils.castSamePrefixPropertyToClazz(environment, STATIC_CONFIG_CLASS, String.class);
+        List<String> staticConfigClassNameList;
+        try {
+            staticConfigClassNameList = EnvironmentUtils.castSamePrefixPropertyToClazz(environment,
+                    STATIC_CONFIG_CLASS, String.class);
+        } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
+            throw new RuntimeException("load static config class error", e);
+        }
+
         // 校验不为空,不为空这个功能才启用
         if (!CollectionUtils.isEmpty(staticConfigClassNameList)) {
+            // 去重处理
+            staticConfigClassNameList = staticConfigClassNameList.stream().distinct().collect(Collectors.toList());
+            // 加载需要配置的静态类
+            List<Class<?>> staticConfigClassList = loadStaticConfigClass(staticConfigClassNameList);
             // 将配置文件中的配置注入到静态变量中
-            configSetToStaticField(environment, staticConfigClassNameList);
-            // todo 新增静态配置检查是否开启，静态配置检查类，包含哪些字段，排除哪些字段
-            checkStaticField(environment);
-            // todo 默认检查【静态配置检查类】中的所有静态字段
-            // todo 包含哪些字段配置项不为空时则只检查这些字段
-            // todo 排除哪些字段不为空时则在检查时排除掉这些字段
+            configSetToStaticField(environment, staticConfigClassList);
+            // 检查静态配置文件中需要配置的属性
+            checkStaticField(staticConfigClassList);
         }
 
     }
 
     /**
-     *
+     * 加载需要配置的静态类
      * @author hubz
-     * @date 2023/5/11 22:32
+     * @date 2023/5/13 13:32
      *
-     * @param environment 上下文环境变量
+     * @param staticConfigClassNameList 静态配置类数组
+     * @return java.util.List<java.lang.Class < ?>> 加载后的静态配置类
      **/
-    private void checkStaticField(ConfigurableEnvironment environment) {
-
-    }
-
-    /**
-     * 将配置文件中的配置注入到静态变量中
-     * @author hubz
-     * @date 2023/5/11 22:30
-     *
-     * @param environment 上下文环境变量
-     **/
-    private void configSetToStaticField(ConfigurableEnvironment environment, List<String> staticConfigClassNameList) {
+    private List<Class<?>> loadStaticConfigClass(List<String> staticConfigClassNameList) {
+        List<Class<?>> staticConfigClassList = new ArrayList<>();
         for (String staticConfigClassName : staticConfigClassNameList) {
             // 加载类
             Class<?> staticConfigClass;
@@ -76,10 +78,54 @@ public class CustomizeApplicationEnvironmentPreparedEventListener implements App
             } catch (ClassNotFoundException e) {
                 throw new RuntimeException(e);
             }
+            staticConfigClassList.add(staticConfigClass);
+        }
+        return staticConfigClassList;
+    }
+
+    /**
+     * 静态属性空值检查
+     * @author hubz
+     * @date 2023/5/11 22:32
+     *
+     * @param staticConfigClassList 静态配置类列表
+     **/
+    private void checkStaticField(List<Class<?>> staticConfigClassList) {
+        for (Class<?> staticConfigClass : staticConfigClassList) {
+            List<Field> fields = ClassUtils.getFieldsWithAnnotation(staticConfigClass, StaticPropertyName.class);
+            for (Field field : fields) {
+                if (!(Modifier.isFinal(field.getModifiers()) && Modifier.isStatic(field.getModifiers()))) {
+                    throw new RuntimeException("the StaticPropertyName is not expected to modify a non-static field or a non-final field");
+                }
+                // 获取静态属性值的方法
+                Object valueObject;
+                try {
+                    valueObject = field.get(null);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+                if (Objects.isNull(valueObject)) {
+                    throw new RuntimeException(String.format("%s -> %s value is auto-set error.",
+                            staticConfigClass.getName(), field.getName()));
+                }
+            }
+        }
+    }
+
+    /**
+     * 将配置文件中的配置注入到静态变量中
+     * @author hubz
+     * @date 2023/5/11 22:30
+     *
+     * @param environment 上下文环境变量
+     * @param staticConfigClassList 静态配置类列表
+     **/
+    private void configSetToStaticField(ConfigurableEnvironment environment, List<Class<?>> staticConfigClassList) {
+        for (Class<?> staticConfigClass : staticConfigClassList) {
             // 判断是否存在需要额外加载的配置文件(额外配置文件必须在需要加载的静态类上)
             loadExtraPropertiesFile(environment, staticConfigClass);
             // 获取类中属性列表
-            Field[] fields = staticConfigClass.getDeclaredFields();
+            List<Field> fields = ClassUtils.getFieldsWithAnnotation(staticConfigClass, StaticPropertyName.class);
             for (Field field : fields) {
                 // 获取每个属性的StaticConfigValue注解的值
                 StaticPropertyName annotation = field.getAnnotation(StaticPropertyName.class);

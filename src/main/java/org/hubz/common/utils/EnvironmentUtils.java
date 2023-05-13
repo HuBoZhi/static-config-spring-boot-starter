@@ -4,7 +4,9 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.PropertySource;
 import org.springframework.util.CollectionUtils;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -19,7 +21,18 @@ public final class EnvironmentUtils {
     private EnvironmentUtils() {
     }
 
-    public static <T> List<T> castSamePrefixPropertyToClazz(ConfigurableEnvironment environment, String prefix, Class<T> clazz) {
+    /**
+     * 将同前缀的数据转换成指定对象列表
+     * @author hubz
+     * @date 2023/5/13 13:50
+     *
+     * @param environment 环境上下文
+     * @param prefix 前缀
+     * @param clazz 目标对象
+     * @return java.util.List<T>
+     **/
+    public static <T> List<T> castSamePrefixPropertyToClazz(ConfigurableEnvironment environment, String prefix, Class<T> clazz)
+            throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
         Map<String, Object> prefixProperty = getPrefixProperty(environment, prefix);
         return parsePropertiesToClazzInvoke(prefixProperty, prefix, clazz);
     }
@@ -78,7 +91,8 @@ public final class EnvironmentUtils {
      * @return java.util.List<T> 结果
      **/
     @SuppressWarnings("unchecked")
-    public static <T> List<T> parsePropertiesToClazzInvoke(Map<String, Object> properties, String prefix, Class<T> clazz) {
+    public static <T> List<T> parsePropertiesToClazzInvoke(Map<String, Object> properties, String prefix, Class<T> clazz)
+            throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
         if (CollectionUtils.isEmpty(properties)) {
             return new ArrayList<>();
         }
@@ -102,24 +116,36 @@ public final class EnvironmentUtils {
         } else {
             // 通过反射获取类的所有属性名
             Field[] fieldFromClass = ClassUtils.getAllFieldFromClass(clazz);
-            // todo 通过构造key，获取每一组中都有哪些属性有值，有值的就赋予近一个实例中去并返回给请求端
             while (index < size) {
-                // todo 创建实例
-
+                // 创建实例
+                Constructor<T> declaredConstructor = clazz.getDeclaredConstructor();
+                T obj = declaredConstructor.newInstance();
                 for (Field field : fieldFromClass) {
                     String fieldName = field.getName();
+                    // 通过构造key，获取每一组中都有哪些属性有值，有值的就赋予近一个实例中去并返回给请求端
                     String tmpIndexPropertyName = prefix + "[" + index + "]." + fieldName;
-                    Object valueObj = properties.get(tmpIndexPropertyName);
-                    // 转换失败直接报错了
-                    Object cast = CastUtils.cast(field.getType(), valueObj);
-                    // todo 将值设置到实例上
 
+                    Class<?> fieldType = field.getType();
+                    Object castValue;
+                    if (ClassUtils.checkBaseObject(clazz)) {
+                        Object valueObj = properties.get(tmpIndexPropertyName);
+                        // 转换失败直接报错了
+                        castValue = CastUtils.cast(field.getType(), valueObj);
+                    } else {
+                        // 子类或者List<String>类似的结构
+                        castValue = parsePropertiesToClazzInvoke(properties, tmpIndexPropertyName, fieldType);
+                    }
+                    // 将值设置到实例上
+                    field.set(obj, castValue);
                 }
-                // todo 检查实例是否所有属性,有属性有值则加入，如果全为null则终止循环
-
-                //objList.add();
-
-                index++;
+                // 检查实例是否所有属性,有属性有值则加入，如果全为null则终止循环
+                Boolean checkFieldsValueNonAllNull = ClassUtils.checkFieldsValueNonAllNull(clazz, obj);
+                if (checkFieldsValueNonAllNull) {
+                    objList.add(obj);
+                    index++;
+                } else {
+                    break;
+                }
             }
         }
 
