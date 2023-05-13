@@ -19,11 +19,7 @@ import org.springframework.util.CollectionUtils;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Properties;
-import java.util.stream.Collectors;
+import java.util.*;
 
 /**
  * @author hubz
@@ -49,9 +45,9 @@ public class StaticConfigApplicationEnvironmentPreparedEventListener implements 
         // 校验不为空,不为空这个功能才启用
         if (!CollectionUtils.isEmpty(staticConfigClassNameList)) {
             // 去重处理
-            staticConfigClassNameList = staticConfigClassNameList.stream().distinct().collect(Collectors.toList());
+            HashSet<String> staticConfigClassNameSet = new HashSet<>(staticConfigClassNameList);
             // 加载需要配置的静态类
-            List<Class<?>> staticConfigClassList = loadStaticConfigClass(staticConfigClassNameList);
+            List<Class<?>> staticConfigClassList = loadStaticConfigClass(staticConfigClassNameSet);
             // 将配置文件中的配置注入到静态变量中
             configSetToStaticField(environment, staticConfigClassList);
             // 检查静态配置文件中需要配置的属性
@@ -65,12 +61,12 @@ public class StaticConfigApplicationEnvironmentPreparedEventListener implements 
      * @author hubz
      * @date 2023/5/13 13:32
      *
-     * @param staticConfigClassNameList 静态配置类数组
+     * @param staticConfigClassNameSet 静态配置类数组
      * @return java.util.List<java.lang.Class < ?>> 加载后的静态配置类
      **/
-    private List<Class<?>> loadStaticConfigClass(List<String> staticConfigClassNameList) {
+    private List<Class<?>> loadStaticConfigClass(HashSet<String> staticConfigClassNameSet) {
         List<Class<?>> staticConfigClassList = new ArrayList<>();
-        for (String staticConfigClassName : staticConfigClassNameList) {
+        for (String staticConfigClassName : staticConfigClassNameSet) {
             // 加载类
             Class<?> staticConfigClass;
             try {
@@ -94,8 +90,8 @@ public class StaticConfigApplicationEnvironmentPreparedEventListener implements 
         for (Class<?> staticConfigClass : staticConfigClassList) {
             List<Field> fields = ClassUtils.getFieldsWithAnnotation(staticConfigClass, StaticPropertyName.class);
             for (Field field : fields) {
-                if (!(Modifier.isFinal(field.getModifiers()) && Modifier.isStatic(field.getModifiers()))) {
-                    throw new RuntimeException("the StaticPropertyName is not expected to modify a non-static field or a non-final field");
+                if (!Modifier.isStatic(field.getModifiers())) {
+                    throw new RuntimeException("the StaticPropertyName is not expected to modify a non-static field.");
                 }
                 // 获取静态属性值的方法
                 Object valueObject;
@@ -130,8 +126,8 @@ public class StaticConfigApplicationEnvironmentPreparedEventListener implements 
                 // 获取每个属性的StaticConfigValue注解的值
                 StaticPropertyName annotation = field.getAnnotation(StaticPropertyName.class);
                 // 判断字段是否为静态字段，如果不是则报错注解加载的字段为非静态字段
-                if (!(Modifier.isFinal(field.getModifiers()) && Modifier.isStatic(field.getModifiers()))) {
-                    throw new RuntimeException("the StaticPropertyName is not expected to modify a non-static field or a non-final field");
+                if (!Modifier.isStatic(field.getModifiers())) {
+                    throw new RuntimeException("the StaticPropertyName is not expected to modify a non-static field");
                 }
                 // 不为空说明有这个注解，这个属性是需要注入配置项的
                 if (Objects.nonNull(annotation)) {

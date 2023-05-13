@@ -8,7 +8,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -33,29 +33,28 @@ public final class EnvironmentUtils {
      **/
     public static <T> List<T> castSamePrefixPropertyToClazz(ConfigurableEnvironment environment, String prefix, Class<T> clazz)
             throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
-        Map<String, Object> prefixProperty = getPrefixProperty(environment, prefix);
-        return parsePropertiesToClazzInvoke(prefixProperty, prefix, clazz);
+        HashSet<String> prefixProperty = getPrefixProperty(environment, prefix);
+        return parsePropertiesToClazzInvoke(environment, prefixProperty, prefix, clazz);
     }
 
     /**
      * 获取指定前缀的配置项
      * @author hubz
-     * @date 2023/5/11 22:58
+     * @date 2023/5/13 14:20
      *
      * @param environment 上下文环境变量
      * @param prefix 前缀
-     * @return java.util.Map<java.lang.String, java.lang.Object> 含有指定前缀的配置项
+     * @return java.util.HashSet<java.lang.String>含有指定前缀的配置项
      **/
-    public static Map<String, Object> getPrefixProperty(ConfigurableEnvironment environment, String prefix) {
-        Map<String, Object> propertyWithPrefix = new HashMap<>();
+    public static HashSet<String> getPrefixProperty(ConfigurableEnvironment environment, String prefix) {
+        HashSet<String> propertyWithPrefix = new HashSet<>();
         for (PropertySource<?> propertySource : environment.getPropertySources()) {
             Map<String, Object> properties = getAllProperties(propertySource);
             if (!CollectionUtils.isEmpty(properties)) {
                 for (Map.Entry<String, Object> entry : properties.entrySet()) {
                     String key = entry.getKey();
-                    Object value = entry.getValue();
                     if (key.startsWith(prefix)) {
-                        propertyWithPrefix.put(key, value);
+                        propertyWithPrefix.add(key);
                     }
                 }
             }
@@ -85,20 +84,21 @@ public final class EnvironmentUtils {
      * @author hubz
      * @date 2023/5/12 23:53
      *
-     * @param properties 具有相同前缀的配置项
+     * @param propertyNameSet 具有相同前缀的配置项名
      * @param prefix 前缀
      * @param clazz 目标类型
      * @return java.util.List<T> 结果
      **/
     @SuppressWarnings("unchecked")
-    public static <T> List<T> parsePropertiesToClazzInvoke(Map<String, Object> properties, String prefix, Class<T> clazz)
+    public static <T> List<T> parsePropertiesToClazzInvoke(ConfigurableEnvironment environment, HashSet<String> propertyNameSet,
+                                                           String prefix, Class<T> clazz)
             throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
-        if (CollectionUtils.isEmpty(properties)) {
+        if (CollectionUtils.isEmpty(propertyNameSet)) {
             return new ArrayList<>();
         }
 
         int index = 0;
-        int size = properties.size();
+        int size = propertyNameSet.size();
         List<T> objList = new ArrayList<>();
 
         // 判断是否为Java基本数据类型对象
@@ -107,7 +107,7 @@ public final class EnvironmentUtils {
         if (checkBaseObject) {
             while (index < size) {
                 String tmpIndexPropertyName = prefix + "[" + index + "]";
-                Object valueObj = properties.get(tmpIndexPropertyName);
+                String valueObj = environment.getProperty(tmpIndexPropertyName);
                 // 转换失败直接报错了
                 Object cast = CastUtils.cast(clazz, valueObj);
                 objList.add((T) cast);
@@ -128,12 +128,12 @@ public final class EnvironmentUtils {
                     Class<?> fieldType = field.getType();
                     Object castValue;
                     if (ClassUtils.checkBaseObject(clazz)) {
-                        Object valueObj = properties.get(tmpIndexPropertyName);
+                        String valueObj = environment.getProperty(tmpIndexPropertyName);
                         // 转换失败直接报错了
                         castValue = CastUtils.cast(field.getType(), valueObj);
                     } else {
                         // 子类或者List<String>类似的结构
-                        castValue = parsePropertiesToClazzInvoke(properties, tmpIndexPropertyName, fieldType);
+                        castValue = parsePropertiesToClazzInvoke(environment, propertyNameSet, tmpIndexPropertyName, fieldType);
                     }
                     // 将值设置到实例上
                     field.set(obj, castValue);
