@@ -27,6 +27,9 @@ import java.util.*;
  **/
 public class StaticConfigApplicationEnvironmentPreparedEventListener implements ApplicationListener<ApplicationEnvironmentPreparedEvent> {
 
+    // todo 属性刷新时需要实时更新这些静态参数
+    // https://blog.csdn.net/wangfenglei123456/article/details/128634050
+    // https://blog.csdn.net/MoRan_Lei/article/details/123803435
     private static final String STATIC_CONFIG_CLASS = "static.config.class";
 
 
