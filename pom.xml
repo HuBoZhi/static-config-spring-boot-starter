@@ -16,7 +16,6 @@
 
 
     <maven-scm-provider-gitexe.version>1.11.2</maven-scm-provider-gitexe.version>
-    <nexus-staging-maven-plugin.version>1.6.8</nexus-staging-maven-plugin.version>
     <maven-source-plugin.version>3.2.1</maven-source-plugin.version>
     <maven-release-plugin.version>2.5.3</maven-release-plugin.version>
     <maven-deploy-plugin.version>2.8.2</maven-deploy-plugin.version>
@@ -45,6 +44,7 @@
 
   <build>
     <finalName>static-config-spring-boot-starter</finalName>
+    <!-- 打包 -->
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -210,6 +210,7 @@
   </distributionManagement>
 
   <profiles>
+    <!-- 测试这个部分删除是否可行 -->
     <profile>
       <id>release-sign-artifacts</id>
       <activation>
